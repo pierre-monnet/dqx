@@ -18,6 +18,7 @@ from databricks.labs.dqx.config import WorkspaceConfig, RunConfig
 from databricks.sdk.errors import NotFound
 from databricks.sdk.service.workspace import ImportFormat
 from databricks.sdk import WorkspaceClient
+from datetime import datetime
 
 
 logger = logging.getLogger(__name__)
@@ -141,17 +142,25 @@ class DQEngineCore(DQEngineCoreBase):
             if "col_names" in func_args:
                 logger.debug(f"Adding DQRuleColSet with columns: {func_args['col_names']}")
                 dq_rule_checks += DQRuleColSet(
-                    columns=func_args["col_names"],
+                    columns=func_args.pop("col_names"),
                     check_func=func,
                     criticality=criticality,
                     filter=filter_expr,
                     # provide arguments without "col_names"
-                    check_func_kwargs={k: func_args[k] for k in func_args.keys() - {"col_names"}},
+                    check_func_kwargs=func_args,
                 ).get_rules()
             else:
                 name = check_def.get("name", None)
-                check_func = func(**func_args)
-                dq_rule_checks.append(DQRule(check=check_func, name=name, criticality=criticality, filter=filter_expr))
+                dq_rule_checks.append(
+                    DQRule(
+                        col_name=func_args.pop("col_name", ""),
+                        check_func=func,
+                        check_func_kwargs=func_args,
+                        name=name,
+                        criticality=criticality,
+                        filter=filter_expr,
+                    )
+                )
 
         logger.debug("Exiting build_checks_by_metadata function with dq_rule_checks")
         return dq_rule_checks
@@ -201,18 +210,32 @@ class DQEngineCore(DQEngineCoreBase):
         :param checks: list of checks to apply to the dataframe
         :param dest_col: name of the map column
         """
-        empty_type = F.lit(None).cast("map<string, string>").alias(dest_col)
+        empty_type = (
+            F.lit(None)
+            .cast(
+                "MAP<STRING, STRUCT<rule: STRING, col_name: STRING, filter: STRING, message: STRING, run_time: STRING>>"
+            )
+            .alias(dest_col)
+        )
+
         if len(checks) == 0:
             return df.select("*", empty_type)
-
+        current_date = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         name_cols = []
         check_cols = []
         for check in checks:
-            check_cols.append(check.check_column())
+            result = F.struct(
+                F.lit(check.check_column).alias("rule"),
+                F.lit(check.col_name).alias("col_name"),
+                F.lit(check.filter or None).cast("string").alias("filter"),
+                F.lit(check.name).alias("message"),
+                F.lit(current_date).alias("run_time"),
+            )
+            check_cols.append(result)
             name_cols.append(F.lit(check.name))
 
         m_col = F.map_from_arrays(F.array(*name_cols), F.array(*check_cols))
-        m_col = F.map_filter(m_col, lambda _, v: v.isNotNull())
+        m_col = F.map_filter(m_col, lambda _, v: v.getField("rule").isNotNull())
         return df.withColumn(dest_col, F.when(F.size(m_col) > 0, m_col).otherwise(empty_type))
 
     @staticmethod
