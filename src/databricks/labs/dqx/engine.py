@@ -225,7 +225,7 @@ class DQEngineCore(DQEngineCoreBase):
         check_cols = []
         for check in checks:
             result = F.struct(
-                F.lit(check.check_column).alias("rule"),
+                F.lit(check.check_column()).alias("rule"),
                 F.lit(check.col_name).alias("col_name"),
                 F.lit(check.filter or None).cast("string").alias("filter"),
                 F.lit(check.name).alias("message"),
