@@ -89,6 +89,7 @@ class DQRuleColSet:
 
     columns: list[str]
     check_func: Callable
+    name: str = ""
     criticality: str = Criticality.ERROR.value
     filter: str | None = None
     check_func_args: list[Any] = field(default_factory=list)
@@ -103,6 +104,7 @@ class DQRuleColSet:
         for col_name in self.columns:
             rule = DQRule(
                 col_name=col_name,
+                name=self.name,
                 criticality=self.criticality,
                 check_func=self.check_func,
                 check_func_args=self.check_func_args,

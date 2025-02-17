@@ -20,6 +20,7 @@ from databricks.sdk.service.workspace import ImportFormat
 from databricks.sdk import WorkspaceClient
 from datetime import datetime
 
+from databricks.labs.dqx.utils import get_column_name
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,6 @@ class DQEngineCore(DQEngineCoreBase):
         error_checks = self._get_check_columns(checks, Criticality.ERROR.value)
         ndf = self._create_results_map(df, error_checks, Columns.ERRORS.value)
         ndf = self._create_results_map(ndf, warning_checks, Columns.WARNINGS.value)
-
         return ndf
 
     def apply_checks_and_split(self, df: DataFrame, checks: list[DQRule]) -> tuple[DataFrame, DataFrame]:
@@ -132,6 +132,7 @@ class DQEngineCore(DQEngineCoreBase):
         for check_def in checks:
             logger.debug(f"Processing check definition: {check_def}")
             check = check_def.get("check", {})
+            name = check_def.get("name","")
             func_name = check.get("function", None)
             func = DQEngineCore._resolve_function(func_name, glbs, fail_on_missing=True)
             assert func  # should already be validated
@@ -143,6 +144,7 @@ class DQEngineCore(DQEngineCoreBase):
                 logger.debug(f"Adding DQRuleColSet with columns: {func_args['col_names']}")
                 dq_rule_checks += DQRuleColSet(
                     columns=func_args.pop("col_names"),
+                    name=name,
                     check_func=func,
                     criticality=criticality,
                     filter=filter_expr,
@@ -213,8 +215,7 @@ class DQEngineCore(DQEngineCoreBase):
         empty_type = (
             F.lit(None)
             .cast(
-                "MAP<STRING, STRUCT<rule: STRING, col_name: STRING, filter: STRING, message: STRING, run_time: STRING>>"
-            )
+                "MAP<STRING, STRUCT<name: STRING NOT NULL, rule: STRING, col_name: STRING NOT NULL, filter: STRING NOT NULL, message: STRING NOT NULL, run_time: STRING NOT NULL>>")
             .alias(dest_col)
         )
 
@@ -225,14 +226,15 @@ class DQEngineCore(DQEngineCoreBase):
         check_cols = []
         for check in checks:
             result = F.struct(
-                F.lit(check.check_column).alias("rule"),
+                F.lit(check.name).alias("name"),
+                F.lit(check.check_column()).alias("rule"),
                 F.lit(check.col_name).alias("col_name"),
                 F.lit(check.filter or None).cast("string").alias("filter"),
                 F.lit(check.name).alias("message"),
                 F.lit(current_date).alias("run_time"),
             )
             check_cols.append(result)
-            name_cols.append(F.lit(check.name))
+            name_cols.append(F.lit(check.name + (f"_{check.filter}" if check.filter else "") if check.name else "col_" + get_column_name(check.check()) + (f"_{check.filter}" if check.filter else "")))
 
         m_col = F.map_from_arrays(F.array(*name_cols), F.array(*check_cols))
         m_col = F.map_filter(m_col, lambda _, v: v.getField("rule").isNotNull())
