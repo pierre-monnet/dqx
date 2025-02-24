@@ -22,6 +22,8 @@ from datetime import datetime
 
 from databricks.labs.dqx.utils import get_column_name
 
+from databricks.labs.dqx.utils import clean_filter_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -234,7 +236,7 @@ class DQEngineCore(DQEngineCoreBase):
                 F.lit(current_date).alias("run_time"),
             )
             check_cols.append(result)
-            name_cols.append(F.lit(check.name + (f"_{check.filter}" if check.filter else "") if check.name else "col_" + get_column_name(check.check()) + (f"_{check.filter}" if check.filter else "")))
+            name_cols.append(F.lit(check.name + (f"_{clean_filter_name(check.filter)}" if check.filter else "") if check.name else "col_" + get_column_name(check.check()) + (f"_{check.filter}" if check.filter else "")))
 
         m_col = F.map_from_arrays(F.array(*name_cols), F.array(*check_cols))
         m_col = F.map_filter(m_col, lambda _, v: v.getField("rule").isNotNull())

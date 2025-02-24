@@ -56,3 +56,15 @@ def deserialize_dicts(checks: list[dict[str, str]]) -> list[dict]:
             if value.startswith("{") and value.endswith("}"):
                 item[key] = yaml.safe_load(value.replace("'", '"'))
     return checks
+
+def clean_filter_name(filter: str):
+    # Convertir en minuscule
+    transformed_filter = filter.lower()
+
+    # Remplacer les espaces par des underscores
+    transformed_filter = transformed_filter.replace(" ", "_")
+
+    # Supprimer les apostrophes
+    transformed_filter = transformed_filter.replace("'", "")
+
+    return transformed_filter
