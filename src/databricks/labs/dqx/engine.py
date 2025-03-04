@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import os
 import functools as ft
@@ -27,7 +28,6 @@ from databricks.labs.dqx.config import WorkspaceConfig, RunConfig
 from databricks.sdk.errors import NotFound
 from databricks.sdk.service.workspace import ImportFormat
 from databricks.sdk import WorkspaceClient
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -248,8 +248,16 @@ class DQEngineCore(DQEngineCoreBase):
         """
         return df.select(
             "*",
-            F.lit(None).cast("map<string, string>").alias(self._column_names[ColumnArguments.ERRORS]),
-            F.lit(None).cast("map<string, string>").alias(self._column_names[ColumnArguments.WARNINGS]),
+            F.lit(None)
+            .cast(
+                "ARRAY<STRUCT<name: STRING NOT NULL, rule: STRING, col_name: STRING NOT NULL, filter: STRING, message: STRING NOT NULL, run_time: STRING NOT NULL>>"
+            )
+            .alias(self._column_names[ColumnArguments.ERRORS]),
+            F.lit(None)
+            .cast(
+                "ARRAY<STRUCT<name: STRING NOT NULL, rule: STRING, col_name: STRING NOT NULL, filter: STRING, message: STRING NOT NULL, run_time: STRING NOT NULL>>"
+            )
+            .alias(self._column_names[ColumnArguments.WARNINGS]),
         )
 
     @staticmethod
@@ -264,7 +272,7 @@ class DQEngineCore(DQEngineCoreBase):
         empty_type = (
             F.lit(None)
             .cast(
-                "ARRAY<STRUCT<name: STRING NOT NULL, rule: STRING, col_name: STRING NOT NULL, filter: STRING NOT NULL, message: STRING NOT NULL, run_time: STRING NOT NULL>>"
+                "ARRAY<STRUCT<name: STRING NOT NULL, rule: STRING, col_name: STRING NOT NULL, filter: STRING, message: STRING NOT NULL, run_time: STRING NOT NULL>>"
             )
             .alias(dest_col)
         )
